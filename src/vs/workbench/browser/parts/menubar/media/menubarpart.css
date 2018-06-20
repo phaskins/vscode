@@ -49,10 +49,31 @@
 	opacity: 1;
 }
 
+.monaco-workbench > .part.menubar .monaco-action-bar.vertical {
+	overflow: visible;
+}
+
+.monaco-submenu {
+	position: absolute;
+	left: 20px;
+	opacity: 1;
+	box-shadow: 0 2px 8px #A8A8A8;
+}
+
 .menubar-menu-items-holder.monaco-menu-container {
 	box-shadow: 0 2px 8px #A8A8A8;
 }
 
 .vs-dark .menubar-menu-items-holder.monaco-menu-container {
 	box-shadow: 0 2px 8px #000;
+}
+
+.monaco-menu .monaco-action-bar.vertical .submenu-icon {
+	display: inline-block;
+	-ms-flex: 2 1 auto;
+	flex: 2 1 auto;
+	padding: 0.5em 2em;
+	line-height: 1.1em;
+	font-size: 12px;
+	text-align: right;
 }

@@ -11,14 +11,14 @@ import * as nls from 'vs/nls';
 import * as browser from 'vs/base/browser/browser';
 import { Part } from 'vs/workbench/browser/part';
 import { IMenubarService, IMenubarMenu, IMenubarMenuItemAction, IMenubarData } from 'vs/platform/menubar/common/menubar';
-import { IMenuService, MenuId, IMenu } from 'vs/platform/actions/common/actions';
+import { IMenuService, MenuId, IMenu, MenuItemAction } from 'vs/platform/actions/common/actions';
 import { IThemeService } from 'vs/platform/theme/common/themeService';
 import { IWindowService, MenuBarVisibility } from 'vs/platform/windows/common/windows';
 import { IContextKeyService } from 'vs/platform/contextkey/common/contextkey';
-import { ActionRunner, IActionRunner, IAction } from 'vs/base/common/actions';
+import { ActionRunner, IActionRunner, IAction, IRunEvent } from 'vs/base/common/actions';
 import { Builder, $ } from 'vs/base/browser/builder';
-import { Separator, ActionItem } from 'vs/base/browser/ui/actionbar/actionbar';
-import { EventType, Dimension, toggleClass } from 'vs/base/browser/dom';
+import { Separator, ActionItem, IActionItemProvider } from 'vs/base/browser/ui/actionbar/actionbar';
+import { EventType, Dimension, toggleClass, EventHelper } from 'vs/base/browser/dom';
 import { TITLE_BAR_ACTIVE_BACKGROUND, TITLE_BAR_ACTIVE_FOREGROUND } from 'vs/workbench/common/theme';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { isWindows, isMacintosh } from 'vs/base/common/platform';
@@ -136,9 +136,11 @@ export class MenubarPart extends Part {
 		}
 
 		this.actionRunner = new ActionRunner();
-		this.actionRunner.onDidBeforeRun(() => {
-			if (this.focusedMenu && this.focusedMenu.holder) {
-				this.focusedMenu.holder.hide();
+		this.actionRunner.onDidBeforeRun((e: IRunEvent) => {
+			if (e.action.id.indexOf('menubar.submenu') === -1) {
+				if (this.focusedMenu && this.focusedMenu.holder) {
+					this.focusedMenu.holder.hide();
+				}
 			}
 		});
 
@@ -537,12 +539,34 @@ export class MenubarPart extends Part {
 		this.toggleCustomMenu(0);
 	}
 
-	private _getActionItem(action: IAction): ActionItem {
-		const keybinding = this.keybindingService.lookupKeybinding(action.id);
-		if (keybinding) {
-			return new ActionItem(action, action, { label: true, keybinding: keybinding.getLabel(), isMenu: true });
+	private _getActionItem(action: IAction): MenubarMenuActionItem {
+		if (!(action instanceof MenuItemAction)) {
+			return undefined;
 		}
-		return null;
+
+		if (action.id.indexOf('menubar.submenu') !== -1) {
+			let actions: IAction[] = [];
+			let menu = this.topLevelMenus['Recent'];
+
+			let groups = menu.getActions();
+			for (let group of groups) {
+				const [, myactions] = group;
+
+				myactions.map((action: IAction) => {
+					action.label = this.calculateActionLabel(action);
+					this.setCheckedStatus(action);
+				});
+
+				actions.push(...myactions);
+				actions.push(new Separator());
+			}
+
+			actions.pop();
+
+			return new MenubarSubmenuActionItem(action, actions, (action) => { return this._getActionItem(action); }, this.actionRunner, this.keybindingService);
+		}
+
+		return new MenubarMenuActionItem(action, this.keybindingService);
 	}
 
 	private toggleCustomMenu(menuIndex: number): void {
@@ -574,7 +598,6 @@ export class MenubarPart extends Part {
 
 		let menuOptions: IMenuOptions = {
 			actionRunner: this.actionRunner,
-			ariaLabel: 'File',
 			actionItemProvider: (action) => { return this._getActionItem(action); }
 		};
 
@@ -760,5 +783,64 @@ class AlternativeKeyEmitter extends Emitter<boolean> {
 	dispose() {
 		super.dispose();
 		this._subscriptions = dispose(this._subscriptions);
+	}
+}
+
+class MenubarMenuActionItem extends ActionItem {
+	constructor(
+		action: IAction,
+		protected keybindingService: IKeybindingService
+	) {
+		super(action, action, { label: true, isMenu: true });
+
+		const keybinding = this.keybindingService.lookupKeybinding(action.id);
+		if (keybinding) {
+			this.options.keybinding = keybinding.getLabel();
+		}
+	}
+}
+
+class MenubarSubmenuActionItem extends MenubarMenuActionItem {
+	protected submenu: Menu;
+
+	constructor(
+		action: IAction,
+		private submenuActions: IAction[],
+		private actionItemProvider: IActionItemProvider,
+		public actionRunner: IActionRunner,
+		protected keybindingService: IKeybindingService
+	) {
+		super(action, keybindingService);
+	}
+
+	public render(container: HTMLElement): void {
+		super.render(container);
+
+		this.builder = $(container);
+		$(this.builder).addClass('monaco-submenu-item');
+		$('span.submenu-icon').text('\u25B6').appendTo(this.builder);
+
+		$(this.builder).on(EventType.CLICK, (e) => {
+			EventHelper.stop(e, true);
+
+			if (!this.submenu) {
+				const submenuContainer = $(this.builder).div({ class: 'monaco-submenu menubar-menu-items-holder context-view' });
+
+				$(submenuContainer).style({
+					'zoom': `${1 / browser.getZoomFactor()}`,
+					// 'top': `${this.submenuContainer.getClientArea().height * browser.getZoomFactor()}px`,
+					'left': `${$(this.builder).getClientArea().width * browser.getZoomFactor()}px`
+				});
+
+
+				let menuOptions: IMenuOptions = {
+					actionRunner: this.actionRunner,
+					actionItemProvider: this.actionItemProvider
+				};
+
+				this.submenu = new Menu(submenuContainer.getHTMLElement(), this.submenuActions, menuOptions);
+				this.submenu.focus();
+			}
+		});
 	}
 }

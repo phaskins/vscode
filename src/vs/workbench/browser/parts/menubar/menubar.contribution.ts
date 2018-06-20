@@ -75,6 +75,15 @@ function fileMenuRegistration() {
 	});
 
 	MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
+		group: '2_open',
+		command: {
+			id: 'menubar.submenu.recent',
+			title: nls.localize({ key: 'miRecentSubmenu', comment: ['&& denotes a mnemonic'] }, "Open Recent")
+		},
+		order: 4
+	});
+
+	MenuRegistry.appendMenuItem(MenuId.MenubarFileMenu, {
 		group: '3_workspace',
 		command: {
 			id: 'workbench.action.addRootFolder',
